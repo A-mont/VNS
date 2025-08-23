@@ -5,8 +5,7 @@ import { Header } from '@/components';
 
 function Home() {
   return (
-     <>
-     <Header/>
+    <>
       <div className="bg-black text-white font-header">
         {/* Header Section */}
         <header className="inset-x-0 top-0 z-50 sticky backdrop-blur-md shadow">
@@ -17,6 +16,7 @@ function Home() {
               </a>
             </div>
           </nav>
+          <Header />
         </header>
 
         {/* Hero + Input Section */}
