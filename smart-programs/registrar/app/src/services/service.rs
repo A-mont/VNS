@@ -5,9 +5,11 @@
 use sails_rs::{
     prelude::*,
     gstd::msg,
-    collections::{HashMap, HashSet},
+    collections::{HashMap},
 };
 use sails_rs::calls::ActionIo;
+
+use crate::services::utils::*;
 
 pub type Node = U256;
 pub type Label = Vec<u8>;
@@ -16,9 +18,9 @@ const MAX_LABEL_LENGTH: usize = 256;
 const MAX_LABELS_RESERVED: usize = 100; 
 const MAX_COMMITMENTS: usize = 1000; 
 
-#[derive(Debug, Clone, Encode, Decode, TypeInfo, PartialEq, Eq)]
-#[codec(crate = sails_rs::scale_codec)]
-#[scale_info(crate = sails_rs::scale_info)]
+#[derive(Debug, Clone, Encode, Decode, TypeInfo)]
+#[codec(crate = gstd::codec)]
+#[scale_info(crate = gstd::scale_info)]
 pub enum RegistrarEvent {
     CommitSubmitted { commitment: [u8; 32], timestamp: u64 },
     NameRegistered { name: Label, owner: ActorId, expires: u64, cost: u128 },
@@ -30,15 +32,13 @@ pub enum RegistrarEvent {
     Withdrawn { to: ActorId, amount: u128 },
 }
 
-#[derive(Debug, Clone, Default, Encode, Decode, TypeInfo, PartialEq, Eq)]
-#[codec(crate = sails_rs::scale_codec)]
-#[scale_info(crate = sails_rs::scale_info)]
+#[derive(Debug, Default)]
 pub struct RegistrarState {
     pub registry: ActorId,
     pub tld_node: Node,
     pub commits: HashMap<[u8; 32], u64>,
     pub expires: HashMap<Label, u64>,
-    pub reserved: HashSet<Label>,
+    pub reserved: Vec<Label>,
     pub base_price: u128,
     pub premium_price: u128,
     pub min_commit_age: u64,
@@ -130,7 +130,7 @@ impl Service {
                 tld_node: init.tld_node,
                 commits: HashMap::new(),
                 expires: HashMap::new(),
-                reserved: HashSet::new(),
+                reserved: Vec::new(),
                 base_price: init.base_price,
                 premium_price: init.premium_price,
                 min_commit_age: init.min_commit_age,
@@ -188,7 +188,8 @@ impl Service {
         preimage.extend_from_slice(owner.as_ref());
         preimage.extend_from_slice(&secret);
         preimage.extend_from_slice(&salt);
-        let commitment = sails_rs::prelude::hash_bytes::<[u8; 32]>(&preimage);
+        //let commitment = sails_rs::prelude::hash_bytes::<[u8; 32]>(&preimage);
+        let commitment = blake2_256(&preimage);
 
         let commit_time = s.commits.get(&commitment).copied().unwrap_or(0);
         if commit_time == 0 {
@@ -356,7 +357,7 @@ impl Service {
             }
         }
         for label in &labels {
-            s.reserved.insert(label.clone());
+            s.reserved.push(label.clone());
         }
         self.emit_event(RegistrarEvent::NamesReserved { labels: labels.clone() })
             .expect("Event failed");
@@ -380,10 +381,7 @@ impl Service {
         RegistrarEvent::Withdrawn { to, amount }
     }
 
-    /// Query the whole on-chain registrar state.
-    pub fn query_state(&self) -> IoRegistrarState {
-        RegistrarState::state_ref().clone().into()
-    }
+  
 
     fn calc_price(name: &Label, duration: u64, base: u128, premium: u128) -> u128 {
         let len = name.len() as u128;
