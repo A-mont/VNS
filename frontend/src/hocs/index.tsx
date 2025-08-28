@@ -14,7 +14,7 @@ import { Alert, alertStyles } from '@gear-js/vara-ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ComponentType } from 'react';
 import { BrowserRouter } from 'react-router-dom';
-import { Program as BattleProgram } from './lib';
+import { Program  } from './lib';
 
 import { ADDRESS } from '@/consts';
 
@@ -55,7 +55,7 @@ function GaslessTransactionsProvider({ children }: ProviderProps) {
 }
 
 function SignlessTransactionsProvider({ children }: ProviderProps) {
-  const { data: program } = useProgram({ library: BattleProgram, id: import.meta.env.VITE_PROGRAMID });
+  const { data: program } = useProgram({ library: Program, id: import.meta.env.VITE_PROGRAMID });
 
   if (!program) return null;
 
@@ -82,9 +82,7 @@ const providers = [
   ApiProvider,              
   AccountProvider,         
   QueryProvider,
-  SignlessTransactionsProvider, 
-  GaslessTransactionsProvider,  
-  EzTransactionsProvider,
+
 ];
 
 
