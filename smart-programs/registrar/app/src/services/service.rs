@@ -182,13 +182,13 @@ impl Service {
             panic!("Name is reserved");
         }
 
-        // Commitment = hash(name, owner, secret, salt)
+      
         let mut preimage = Vec::new();
         preimage.extend_from_slice(&name);
         preimage.extend_from_slice(owner.as_ref());
         preimage.extend_from_slice(&secret);
         preimage.extend_from_slice(&salt);
-        //let commitment = sails_rs::prelude::hash_bytes::<[u8; 32]>(&preimage);
+      
         let commitment = blake2_256(&preimage);
 
         let commit_time = s.commits.get(&commitment).copied().unwrap_or(0);
@@ -211,16 +211,13 @@ impl Service {
 
         let price = Self::calc_price(&name, duration, s.base_price, s.premium_price);
 
-        // Payment logic: for demo, just increment balance
         s.balance = s.balance.saturating_add(price); 
 
         let new_expiry = now.checked_add(duration).expect("Overflow in expiry calculation");
         s.expires.insert(name.clone(), new_expiry);
 
-        // Remove commitment
         s.commits.remove(&commitment);
 
-        // Set resolver in registry if provided
         if let Some(resolver_addr) = resolver {
             let _ = resolver_addr;
         }
