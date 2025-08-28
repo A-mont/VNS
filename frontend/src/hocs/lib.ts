@@ -1,202 +1,102 @@
+
 import { GearApi, decodeAddress } from '@gear-js/api';
 import { TypeRegistry } from '@polkadot/types';
 import { TransactionBuilder, getServiceNamePrefix, getFnNamePrefix, ZERO_ADDRESS } from 'sails-js';
 
 export type ActorId = string;
 
-export interface UtilsConfig {
-  health: number;
-  max_participants: number;
-  attack_range: [number, number];
-  defence_range: [number, number];
-  dodge_range: [number, number];
-  available_points: number;
-  time_for_move_in_blocks: number;
-  block_duration_ms: number;
-  gas_for_create_warrior: number | string | bigint;
-  gas_to_cancel_the_battle: number | string | bigint;
-  time_to_cancel_the_battle: number;
-  reservation_amount: number | string | bigint;
-  reservation_time: number;
+export interface InitRegistrar {
+  registry: ActorId;
+  tld_node: bigint | string;
+  controller: ActorId;
+  base_price: bigint | string;
+  premium_price: bigint | string;
+  min_commit_age: bigint | string;
+  max_commit_age: bigint | string;
+  grace_period: bigint | string;
 }
 
-export interface SessionConfig {
-  gas_to_delete_session: number | string | bigint;
-  minimum_session_duration_ms: number | string | bigint;
-  ms_per_block: number | string | bigint;
-}
-
-export interface Appearance {
-  head_index: number;
-  hat_index: number;
-  body_index: number;
-  accessory_index: number;
-  body_color: string;
-  back_color: string;
-}
-
-export type Move = 'Attack' | 'Reflect' | 'Ultimate';
-
-export interface BattleState {
-  admin: ActorId;
-  battle_name: string;
-  time_creation: number | string | bigint;
-  bid: number | string | bigint;
-  participants: Array<[ActorId, Player]>;
-  defeated_participants: Array<[ActorId, Player]>;
-  state: State;
-  pairs: Array<[number, Pair]>;
-  players_to_pairs: Array<[ActorId, number]>;
-  waiting_player: [ActorId, number] | null;
-  pair_id: number;
-  reservation: Array<[ActorId, ReservationId]>;
-}
-
-export interface Player {
-  warrior_id: ActorId | null;
-  owner: ActorId;
-  user_name: string;
-  player_settings: PlayerSettings;
-  appearance: Appearance;
-  number_of_victories: number;
-  ultimate_reload: number;
-  reflect_reload: number;
-}
-
-export interface PlayerSettings {
-  health: number;
-  attack: number;
-  defence: number;
-  dodge: number;
-}
-
-export type State = { registration: null } | { started: null } | { gameIsOver: { winners: [ActorId, ActorId | null] } };
-
-export interface Pair {
-  player_1: ActorId;
-  player_2: ActorId;
-  action: [ActorId, Move] | null;
-  round: number;
-  round_start_time: number | string | bigint;
-}
-
-export type ReservationId = [Array<number>];
-
-export interface SignatureData {
-  key: ActorId;
-  duration: number | string | bigint;
-  allowed_actions: Array<ActionsForSession>;
-}
-
-export type ActionsForSession = 'CreateNewBattle' | 'Registration' | 'StartBattle' | 'MakeMove';
-
-export interface SessionData {
-  key: ActorId;
-  expires: number | string | bigint;
-  allowed_actions: Array<ActionsForSession>;
-  expires_at_block: number;
-}
+export type RegistrarEvent =
+  | { CommitSubmitted: { commitment: [string, number[]]; timestamp: bigint | string } }
+  | { NameRegistered: { name: number[]; owner: ActorId; expires: bigint | string; cost: bigint | string } }
+  | { NameRenewed: { name: number[]; expires: bigint | string; cost: bigint | string } }
+  | { PricesSet: { base: bigint | string; premium: bigint | string } }
+  | { CommitAgesSet: { min: bigint | string; max: bigint | string } }
+  | { GracePeriodSet: { grace: bigint | string } }
+  | { NamesReserved: { labels: number[][] } }
+  | { Withdrawn: { to: ActorId; amount: bigint | string } };
 
 const types = {
-  UtilsConfig: {
-    health: 'u16',
-    max_participants: 'u8',
-    attack_range: '(u16, u16)',
-    defence_range: '(u16, u16)',
-    dodge_range: '(u16, u16)',
-    available_points: 'u16',
-    time_for_move_in_blocks: 'u32',
-    block_duration_ms: 'u32',
-    gas_for_create_warrior: 'u64',
-    gas_to_cancel_the_battle: 'u64',
-    time_to_cancel_the_battle: 'u32',
-    reservation_amount: 'u64',
-    reservation_time: 'u32',
+  InitRegistrar: {
+    registry: '[u8;32]',
+    tld_node: 'U256',
+    controller: '[u8;32]',
+    base_price: 'u128',
+    premium_price: 'u128',
+    min_commit_age: 'u64',
+    max_commit_age: 'u64',
+    grace_period: 'u64',
   },
-  SessionConfig: {
-    gas_to_delete_session: 'u64',
-    minimum_session_duration_ms: 'u64',
-    ms_per_block: 'u64',
+  CommitSubmitted: {
+    commitment: '[u8;32]',
+    timestamp: 'u64',
   },
-  Appearance: {
-    head_index: 'u16',
-    hat_index: 'u16',
-    body_index: 'u16',
-    accessory_index: 'u16',
-    body_color: 'String',
-    back_color: 'String',
-  },
-  Move: { _enum: ['Attack', 'Reflect', 'Ultimate'] },
-  BattleState: {
-    admin: '[u8;32]',
-    battle_name: 'String',
-    time_creation: 'u64',
-    bid: 'u128',
-    participants: 'Vec<([u8;32], Player)>',
-    defeated_participants: 'Vec<([u8;32], Player)>',
-    state: 'State',
-    pairs: 'Vec<(u16, Pair)>',
-    players_to_pairs: 'Vec<([u8;32], u16)>',
-    waiting_player: 'Option<([u8;32], u16)>',
-    pair_id: 'u16',
-    reservation: 'Vec<([u8;32], ReservationId)>',
-  },
-  Player: {
-    warrior_id: 'Option<[u8;32]>',
+  NameRegistered: {
+    name: 'Vec<u8>',
     owner: '[u8;32]',
-    user_name: 'String',
-    player_settings: 'PlayerSettings',
-    appearance: 'Appearance',
-    number_of_victories: 'u8',
-    ultimate_reload: 'u8',
-    reflect_reload: 'u8',
-  },
-  PlayerSettings: { health: 'u16', attack: 'u16', defence: 'u16', dodge: 'u16' },
-  State: {
-    _enum: {
-      Registration: 'Null',
-      Started: 'Null',
-      GameIsOver: { winners: '([u8;32], Option<[u8;32]>)' },
-    },
-  },
-  Pair: {
-    player_1: '[u8;32]',
-    player_2: '[u8;32]',
-    action: 'Option<([u8;32], Move)>',
-    round: 'u8',
-    round_start_time: 'u64',
-  },
-  ReservationId: '([u8; 32])',
-  SignatureData: { key: '[u8;32]', duration: 'u64', allowed_actions: 'Vec<ActionsForSession>' },
-  ActionsForSession: { _enum: ['CreateNewBattle', 'Registration', 'StartBattle', 'MakeMove'] },
-  SessionData: {
-    key: '[u8;32]',
     expires: 'u64',
-    allowed_actions: 'Vec<ActionsForSession>',
-    expires_at_block: 'u32',
+    cost: 'u128',
+  },
+  NameRenewed: {
+    name: 'Vec<u8>',
+    expires: 'u64',
+    cost: 'u128',
+  },
+  PricesSet: {
+    base: 'u128',
+    premium: 'u128',
+  },
+  CommitAgesSet: {
+    min: 'u64',
+    max: 'u64',
+  },
+  GracePeriodSet: {
+    grace: 'u64',
+  },
+  NamesReserved: {
+    labels: 'Vec<Vec<u8>>',
+  },
+  Withdrawn: {
+    to: '[u8;32]',
+    amount: 'u128',
+  },
+  RegistrarEvent: {
+    _enum: {
+      CommitSubmitted: 'CommitSubmitted',
+      NameRegistered: 'NameRegistered',
+      NameRenewed: 'NameRenewed',
+      PricesSet: 'PricesSet',
+      CommitAgesSet: 'CommitAgesSet',
+      GracePeriodSet: 'GracePeriodSet',
+      NamesReserved: 'NamesReserved',
+      Withdrawn: 'Withdrawn',
+    },
   },
 };
 
 export class Program {
   public readonly registry: TypeRegistry;
-  public readonly battle: Battle;
-  public readonly session: Session;
+  public readonly service: Service;
 
-  constructor(public api: GearApi, private _programId?: `0x${string}`) {
+  constructor(
+    public api: GearApi,
+    private _programId?: `0x${string}`,
+  ) {
     this.registry = new TypeRegistry();
     this.registry.setKnownTypes({ types });
     this.registry.register(types);
 
-    const sessionInstance = new Session(this);
-    this.session = {
-      sessionForTheAccount: sessionInstance.sessionForTheAccount.bind(sessionInstance),
-      createSession: sessionInstance.createSession.bind(sessionInstance),
-      deleteSessionFromAccount: sessionInstance.deleteSessionFromAccount.bind(sessionInstance),
-      subscribeToSessionCreatedEvent: sessionInstance.subscribeToSessionCreatedEvent.bind(sessionInstance),
-      subscribeToSessionDeletedEvent: sessionInstance.subscribeToSessionDeletedEvent.bind(sessionInstance),
-    };
-
-    this.battle = new Battle(this);
+    this.service = new Service(this);
   }
 
   public get programId(): `0x${string}` {
@@ -204,21 +104,16 @@ export class Program {
     return this._programId;
   }
 
-  public sessionForTheAccount(account: ActorId): Promise<SessionData | null> {
-    return this.session.sessionForTheAccount(account);
-  }
-
   newCtorFromCode(
-    code: ArrayBuffer | Uint8Array,
-    config: UtilsConfig,
-    session_config: SessionConfig,
+    code: Uint8Array | Buffer,
+    init: InitRegistrar,
   ): TransactionBuilder<null> {
     const builder = new TransactionBuilder<null>(
       this.api,
       this.registry,
       'upload_program',
-      ['New', config, session_config],
-      '(String, UtilsConfig, SessionConfig)',
+      ['New', init],
+      '(String, InitRegistrar)',
       'String',
       code,
     );
@@ -228,15 +123,14 @@ export class Program {
 
   newCtorFromCodeId(
     codeId: `0x${string}`,
-    config: UtilsConfig,
-    session_config: SessionConfig,
+    init: InitRegistrar,
   ): TransactionBuilder<null> {
     const builder = new TransactionBuilder<null>(
       this.api,
       this.registry,
       'create_program',
-      ['New', config, session_config],
-      '(String, UtilsConfig, SessionConfig)',
+      ['New', init],
+      '(String, InitRegistrar)',
       'String',
       codeId,
     );
@@ -245,658 +139,328 @@ export class Program {
   }
 }
 
-export class Battle {
+export class Service {
   constructor(private _program: Program) {}
 
-  public addAdmin(new_admin: ActorId): TransactionBuilder<null> {
+  public commit(commitment: [number, number[]]): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Battle', 'AddAdmin', new_admin],
+      ['Service', 'Commit', commitment],
       '(String, String, [u8;32])',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public automaticMove(player_id: ActorId, number_of_victories: number, round: number): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'AutomaticMove', player_id, number_of_victories, round],
-      '(String, String, [u8;32], u8, u8)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public cancelRegister(session_for_account: ActorId | null): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'CancelRegister', session_for_account],
-      '(String, String, Option<[u8;32]>)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public cancelTournament(session_for_account: ActorId | null): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'CancelTournament', session_for_account],
-      '(String, String, Option<[u8;32]>)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public changeConfig(config: UtilsConfig): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'ChangeConfig', config],
-      '(String, String, UtilsConfig)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public createNewBattle(
-    battle_name: string,
-    user_name: string,
-    warrior_id: ActorId | null,
-    appearance: Appearance | null,
-    attack: number,
-    defence: number,
-    dodge: number,
-    session_for_account: ActorId | null,
-  ): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      [
-        'Battle',
-        'CreateNewBattle',
-        battle_name,
-        user_name,
-        warrior_id,
-        appearance,
-        attack,
-        defence,
-        dodge,
-        session_for_account,
-      ],
-      '(String, String, String, String, Option<[u8;32]>, Option<Appearance>, u16, u16, u16, Option<[u8;32]>)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public delayedCancelTournament(game_id: ActorId, time_creation: number | string | bigint): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'DelayedCancelTournament', game_id, time_creation],
-      '(String, String, [u8;32], u64)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public deletePlayer(player_id: ActorId, session_for_account: ActorId | null): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'DeletePlayer', player_id, session_for_account],
-      '(String, String, [u8;32], Option<[u8;32]>)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public exitGame(session_for_account: ActorId | null): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'ExitGame', session_for_account],
-      '(String, String, Option<[u8;32]>)',
-      'Null',
-      this._program.programId,
-    );
-  }
-
-  public makeMove(warrior_move: Move, session_for_account: ActorId | null): TransactionBuilder<null> {
-    if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
-      this._program.api,
-      this._program.registry,
-      'send_message',
-      ['Battle', 'MakeMove', warrior_move, session_for_account],
-      '(String, String, Move, Option<[u8;32]>)',
-      'Null',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
   public register(
-    game_id: ActorId,
-    warrior_id: ActorId | null,
-    appearance: Appearance | null,
-    user_name: string,
-    attack: number,
-    defence: number,
-    dodge: number,
-    session_for_account: ActorId | null,
-  ): TransactionBuilder<null> {
+    name: number[],
+    owner: ActorId,
+    duration: bigint | string | number,
+    secret: [number, number[]],
+    salt: [number, number[]],
+    resolver: ActorId | null,
+  ): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Battle', 'Register', game_id, warrior_id, appearance, user_name, attack, defence, dodge, session_for_account],
-      '(String, String, [u8;32], Option<[u8;32]>, Option<Appearance>, String, u16, u16, u16, Option<[u8;32]>)',
-      'Null',
+      ['Service', 'Register', name, owner, duration, secret, salt, resolver],
+      '(String, String, Vec<u8>, [u8;32], u64, [u8;32], [u8;32], Option<[u8;32]>)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public startBattle(session_for_account: ActorId | null): TransactionBuilder<null> {
+  public renew(
+    name: number[],
+    duration: bigint | string | number,
+  ): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Battle', 'StartBattle', session_for_account],
-      '(String, String, Option<[u8;32]>)',
-      'Null',
+      ['Service', 'Renew', name, duration],
+      '(String, String, Vec<u8>, u64)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public startNextFight(session_for_account: ActorId | null): TransactionBuilder<null> {
+  public reserveNames(labels: number[][]): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Battle', 'StartNextFight', session_for_account],
-      '(String, String, Option<[u8;32]>)',
-      'Null',
+      ['Service', 'ReserveNames', labels],
+      '(String, String, Vec<Vec<u8>>)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public async admins(
-    originAddress?: string,
-    value?: number | string | bigint,
-    atBlock?: `0x${string}`,
-  ): Promise<Array<ActorId>> {
-    const payload = this._program.registry.createType('(String, String)', ['Battle', 'Admins']).toHex();
-    const reply = await this._program.api.message.calculateReply({
-      destination: this._program.programId,
-      origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
-      payload,
-      value: value || 0,
-      gasLimit: this._program.api.blockGasLimit.toBigInt(),
-      at: atBlock,
-    });
-    if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, Vec<[u8;32]>)', reply.payload);
-    return result[2].toJSON() as unknown as Array<ActorId>;
-  }
-
-  public async config(
-    originAddress?: string,
-    value?: number | string | bigint,
-    atBlock?: `0x${string}`,
-  ): Promise<UtilsConfig> {
-    const payload = this._program.registry.createType('(String, String)', ['Battle', 'Config']).toHex();
-    const reply = await this._program.api.message.calculateReply({
-      destination: this._program.programId,
-      origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
-      payload,
-      value: value || 0,
-      gasLimit: this._program.api.blockGasLimit.toBigInt(),
-      at: atBlock,
-    });
-    if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, UtilsConfig)', reply.payload);
-    return result[2].toJSON() as unknown as UtilsConfig;
-  }
-
-  public async getBattle(
-    game_id: ActorId,
-    originAddress?: string,
-    value?: number | string | bigint,
-    atBlock?: `0x${string}`,
-  ): Promise<BattleState | null> {
-    const payload = this._program.registry
-      .createType('(String, String, [u8;32])', ['Battle', 'GetBattle', game_id])
-      .toHex();
-    const reply = await this._program.api.message.calculateReply({
-      destination: this._program.programId,
-      origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
-      payload,
-      value: value || 0,
-      gasLimit: this._program.api.blockGasLimit.toBigInt(),
-      at: atBlock,
-    });
-    if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, Option<BattleState>)', reply.payload);
-    return result[2].toJSON() as unknown as BattleState | null;
-  }
-
-  public async getMyBattle(
-    originAddress?: string,
-    value?: number | string | bigint,
-    atBlock?: `0x${string}`,
-  ): Promise<BattleState | null> {
-    const payload = this._program.registry.createType('(String, String)', ['Battle', 'GetMyBattle']).toHex();
-    const reply = await this._program.api.message.calculateReply({
-      destination: this._program.programId,
-      origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
-      payload,
-      value: value || 0,
-      gasLimit: this._program.api.blockGasLimit.toBigInt(),
-      at: atBlock,
-    });
-    if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, Option<BattleState>)', reply.payload);
-    return result[2].toJSON() as unknown as BattleState | null;
-  }
-
-  public subscribeToNewBattleCreatedEvent(
-    callback: (data: { battle_id: ActorId; bid: number | string | bigint }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'NewBattleCreated') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"battle_id":"[u8;32]","bid":"u128"})', message.payload)[2]
-              .toJSON() as { battle_id: ActorId; bid: number | string | bigint },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToPlayerRegisteredEvent(
-    callback: (data: { admin_id: ActorId; user_name: string; bid: number | string | bigint }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'PlayerRegistered') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType(
-                '(String, String, {"admin_id":"[u8;32]","user_name":"String","bid":"u128"})',
-                message.payload,
-              )[2]
-              .toJSON() as { admin_id: ActorId; user_name: string; bid: number | string | bigint },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToRegisterCanceledEvent(
-    callback: (data: { player_id: ActorId }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'RegisterCanceled') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"player_id":"[u8;32]"})', message.payload)[2]
-              .toJSON() as { player_id: ActorId },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToBattleCanceledEvent(
-    callback: (data: { game_id: ActorId }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'BattleCanceled') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"game_id":"[u8;32]"})', message.payload)[2]
-              .toJSON() as { game_id: ActorId },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToBattleStartedEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'BattleStarted') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToMoveMadeEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'MoveMade') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToBattleFinishedEvent(
-    callback: (data: { winner: ActorId }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'BattleFinished') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"winner":"[u8;32]"})', message.payload)[2]
-              .toJSON() as { winner: ActorId },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToPairCheckedEvent(
-    callback: (data: { game_id: ActorId; pair_id: number; round: number }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'PairChecked') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"game_id":"[u8;32]","pair_id":"u8","round":"u8"})', message.payload)[2]
-              .toJSON() as { game_id: ActorId; pair_id: number; round: number },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToFirstRoundCheckedEvent(
-    callback: (data: { game_id: ActorId; wave: number }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'FirstRoundChecked') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"game_id":"[u8;32]","wave":"u8"})', message.payload)[2]
-              .toJSON() as { game_id: ActorId; wave: number },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToNextBattleStartedEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'NextBattleStarted') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToEnemyWaitingEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'EnemyWaiting') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToWarriorGeneratedEvent(
-    callback: (data: { address: ActorId }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'WarriorGenerated') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"address":"[u8;32]"})', message.payload)[2]
-              .toJSON() as { address: ActorId },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToAdminAddedEvent(
-    callback: (data: { new_admin: ActorId }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'AdminAdded') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"new_admin":"[u8;32]"})', message.payload)[2]
-              .toJSON() as { new_admin: ActorId },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToConfigChangedEvent(
-    callback: (data: { config: UtilsConfig }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'ConfigChanged') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType('(String, String, {"config":"UtilsConfig"})', message.payload)[2]
-              .toJSON() as { config: UtilsConfig },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToGameLeftEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'GameLeft') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToRoundActionEvent(
-    callback: (data: {
-      round: number;
-      player_1: [ActorId, Move, number];
-      player_2: [ActorId, Move, number];
-    }) => void | Promise<void>,
-  ): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'RoundAction') {
-        void Promise.resolve(
-          callback(
-            this._program.registry
-              .createType(
-                '(String, String, {"round":"u8","player_1":"([u8;32], Move, u16)","player_2":"([u8;32], Move, u16)"})',
-                message.payload,
-              )[2]
-              .toJSON() as {
-              round: number;
-              player_1: [ActorId, Move, number];
-              player_2: [ActorId, Move, number];
-            },
-          ),
-        ).catch(console.error);
-      }
-    });
-  }
-
-  public subscribeToAutomaticMoveMadeEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
-    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
-      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
-      const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Battle' && getFnNamePrefix(payload) === 'AutomaticMoveMade') {
-        void Promise.resolve(callback(null)).catch(console.error);
-      }
-    });
-  }
-}
-
-export class Session {
-  constructor(private _program: Program) {}
-
-  public createSession(signature_data: SignatureData, signature: `0x${string}` | null): TransactionBuilder<null> {
+  public setCommitAges(
+    min: bigint | string | number,
+    max: bigint | string | number,
+  ): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Session', 'CreateSession', signature_data, signature],
-      '(String, String, SignatureData, Option<Vec<u8>>)',
-      'Null',
+      ['Service', 'SetCommitAges', min, max],
+      '(String, String, u64, u64)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public deleteSessionFromAccount(): TransactionBuilder<null> {
+  public setGracePeriod(
+    grace: bigint | string | number,
+  ): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Session', 'DeleteSessionFromAccount'],
-      '(String, String)',
-      'Null',
+      ['Service', 'SetGracePeriod', grace],
+      '(String, String, u64)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public deleteSessionFromProgram(session_for_account: ActorId): TransactionBuilder<null> {
+  public setPrices(
+    base: bigint | string | number,
+    premium: bigint | string | number,
+  ): TransactionBuilder<RegistrarEvent> {
     if (!this._program.programId) throw new Error('Program ID is not set');
-    return new TransactionBuilder<null>(
+    return new TransactionBuilder<RegistrarEvent>(
       this._program.api,
       this._program.registry,
       'send_message',
-      ['Session', 'DeleteSessionFromProgram', session_for_account],
-      '(String, String, [u8;32])',
-      'Null',
+      ['Service', 'SetPrices', base, premium],
+      '(String, String, u128, u128)',
+      'RegistrarEvent',
       this._program.programId,
     );
   }
 
-  public async sessionForTheAccount(
-    account: ActorId,
+  public withdraw(
+    to: ActorId,
+    amount: bigint | string | number,
+  ): TransactionBuilder<RegistrarEvent> {
+    if (!this._program.programId) throw new Error('Program ID is not set');
+    return new TransactionBuilder<RegistrarEvent>(
+      this._program.api,
+      this._program.registry,
+      'send_message',
+      ['Service', 'Withdraw', to, amount],
+      '(String, String, [u8;32], u128)',
+      'RegistrarEvent',
+      this._program.programId,
+    );
+  }
+
+  public async available(
+    name: number[],
     originAddress?: string,
     value?: number | string | bigint,
     atBlock?: `0x${string}`,
-  ): Promise<SessionData | null> {
-    const payload = this._program.registry
-      .createType('(String, String, [u8;32])', ['Session', 'SessionForTheAccount', account])
-      .toHex();
+  ): Promise<boolean> {
+    const payload = this._program.registry.createType('(String, String, Vec<u8>)', ['Service', 'Available', name]).toHex();
     const reply = await this._program.api.message.calculateReply({
       destination: this._program.programId,
       origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
       payload,
-      value: value || 0,
+      value: value ?? 0,
       gasLimit: this._program.api.blockGasLimit.toBigInt(),
       at: atBlock,
     });
     if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, Option<SessionData>)', reply.payload);
-    return result[2].toJSON() as unknown as SessionData | null;
+    const result = this._program.registry.createType('(String, String, bool)', reply.payload);
+    return result[2].valueOf() as boolean;
   }
 
-  public async sessions(
+  public async expiryOf(
+    name: number[],
     originAddress?: string,
     value?: number | string | bigint,
     atBlock?: `0x${string}`,
-  ): Promise<Array<[ActorId, SessionData]>> {
-    const payload = this._program.registry.createType('(String, String)', ['Session', 'Sessions']).toHex();
+  ): Promise<bigint | string | null> {
+    const payload = this._program.registry.createType('(String, String, Vec<u8>)', ['Service', 'ExpiryOf', name]).toHex();
     const reply = await this._program.api.message.calculateReply({
       destination: this._program.programId,
       origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
       payload,
-      value: value || 0,
+      value: value ?? 0,
       gasLimit: this._program.api.blockGasLimit.toBigInt(),
       at: atBlock,
     });
     if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
-    const result = this._program.registry.createType('(String, String, Vec<([u8;32], SessionData)>)', reply.payload);
-    return result[2].toJSON() as unknown as Array<[ActorId, SessionData]>;
+    const result = this._program.registry.createType('(String, String, Option<u64>)', reply.payload);
+    return result[2].toJSON() as bigint | string | null;
   }
 
-  public subscribeToSessionCreatedEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
+  public async price(
+    name: number[],
+    duration: bigint | string | number,
+    originAddress?: string,
+    value?: number | string | bigint,
+    atBlock?: `0x${string}`,
+  ): Promise<bigint | string> {
+    const payload = this._program.registry.createType('(String, String, Vec<u8>, u64)', ['Service', 'Price', name, duration]).toHex();
+    const reply = await this._program.api.message.calculateReply({
+      destination: this._program.programId,
+      origin: originAddress ? decodeAddress(originAddress) : ZERO_ADDRESS,
+      payload,
+      value: value ?? 0,
+      gasLimit: this._program.api.blockGasLimit.toBigInt(),
+      at: atBlock,
+    });
+    if (!reply.code.isSuccess) throw new Error(this._program.registry.createType('String', reply.payload).toString());
+    const result = this._program.registry.createType('(String, String, u128)', reply.payload);
+    return result[2].toBigInt();
+  }
+
+  public subscribeToCommitSubmittedEvent(
+    callback: (data: { commitment: [string, number[]]; timestamp: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
     return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
       if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
       const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Session' && getFnNamePrefix(payload) === 'SessionCreated') {
-        void Promise.resolve(callback(null)).catch(console.error);
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'CommitSubmitted') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, CommitSubmitted)', message.payload)[2].toJSON() as {
+            commitment: [string, number[]];
+            timestamp: bigint | string;
+          }
+        )).catch(console.error);
       }
     });
   }
 
-  public subscribeToSessionDeletedEvent(callback: (data: null) => void | Promise<void>): Promise<() => void> {
+  public subscribeToNameRegisteredEvent(
+    callback: (data: { name: number[]; owner: ActorId; expires: bigint | string; cost: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
     return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
       if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
       const payload = message.payload.toHex();
-      if (getServiceNamePrefix(payload) === 'Session' && getFnNamePrefix(payload) === 'SessionDeleted') {
-        void Promise.resolve(callback(null)).catch(console.error);
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'NameRegistered') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, NameRegistered)', message.payload)[2].toJSON() as {
+            name: number[];
+            owner: ActorId;
+            expires: bigint | string;
+            cost: bigint | string;
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToNameRenewedEvent(
+    callback: (data: { name: number[]; expires: bigint | string; cost: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'NameRenewed') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, NameRenewed)', message.payload)[2].toJSON() as {
+            name: number[];
+            expires: bigint | string;
+            cost: bigint | string;
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToPricesSetEvent(
+    callback: (data: { base: bigint | string; premium: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'PricesSet') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, PricesSet)', message.payload)[2].toJSON() as {
+            base: bigint | string;
+            premium: bigint | string;
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToCommitAgesSetEvent(
+    callback: (data: { min: bigint | string; max: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'CommitAgesSet') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, CommitAgesSet)', message.payload)[2].toJSON() as {
+            min: bigint | string;
+            max: bigint | string;
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToGracePeriodSetEvent(
+    callback: (data: { grace: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'GracePeriodSet') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, GracePeriodSet)', message.payload)[2].toJSON() as {
+            grace: bigint | string;
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToNamesReservedEvent(
+    callback: (data: { labels: number[][] }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'NamesReserved') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, NamesReserved)', message.payload)[2].toJSON() as {
+            labels: number[][];
+          }
+        )).catch(console.error);
+      }
+    });
+  }
+
+  public subscribeToWithdrawnEvent(
+    callback: (data: { to: ActorId; amount: bigint | string }) => void | Promise<void>
+  ): Promise<() => void> {
+    return this._program.api.gearEvents.subscribeToGearEvent('UserMessageSent', ({ data: { message } }) => {
+      if (!message.source.eq(this._program.programId) || !message.destination.eq(ZERO_ADDRESS)) return;
+      const payload = message.payload.toHex();
+      if (getServiceNamePrefix(payload) === 'Service' && getFnNamePrefix(payload) === 'Withdrawn') {
+        void Promise.resolve(callback(
+          this._program.registry.createType('(String, String, Withdrawn)', message.payload)[2].toJSON() as {
+            to: ActorId;
+            amount: bigint | string;
+          }
+        )).catch(console.error);
       }
     });
   }
