@@ -14,13 +14,9 @@ const DEFAULT_DURATION_MS = 365n * 24n * 60n * 60n * 1000n;
 const te = new TextEncoder();
 const nameToBytes = (name: string) => te.encode(name);
 
+// Uint8Array -> hex string 0x...
 const u8aToHex = (u8: Uint8Array) =>
   '0x' + Array.from(u8).map((b) => b.toString(16).padStart(2, '0')).join('');
-
-const asFixedBytes = (u8: Uint8Array, len?: number): [number, number[]] => [
-  len ?? u8.length,
-  Array.from(u8),
-];
 
 /** commitment = blake2b-256(name || owner || secret || salt) */
 function makeCommitment(
@@ -78,6 +74,12 @@ export function ClaimVaraNameCard() {
 
     const commitment = makeCommitment(name.trim(), ownerBytes32, secret, salt);
 
+    const commitmentHex = u8aToHex(commitment);   
+    const ownerHex32   = u8aToHex(ownerBytes32);  
+    const secretHex    = u8aToHex(secret);       
+    const saltHex      = u8aToHex(salt);         
+   
+
     try {
       setSending(true);
       setStatus('Submitting commitment…');
@@ -85,8 +87,8 @@ export function ClaimVaraNameCard() {
       const svc = new Service(new Program(api, PROGRAM_ID));
       const injector = await web3FromSource(account.meta.source);
 
-      // 1) commit: bytes32 -> [32, number[]]
-      const commitTx: TransactionBuilder<unknown> = svc.commit(asFixedBytes(commitment, 32));
+      // 1) commit: pasa hex de 32 bytes
+      const commitTx: TransactionBuilder<unknown> = (svc as any).commit(commitmentHex);
       commitTx.withAccount(account.decodedAddress, { signer: injector.signer });
       await commitTx.calculateGas();
       const { blockHash: commitBlock, response: commitResp } = await commitTx.signAndSend();
@@ -97,18 +99,17 @@ export function ClaimVaraNameCard() {
       setStatus(`Waiting ${Math.ceil(MIN_COMMIT_AGE_MS / 1000)}s before register…`);
       await new Promise((res) => setTimeout(res, MIN_COMMIT_AGE_MS));
 
-      // 3) register
+      // 3) register: name -> number[], owner/secret/salt -> hex 32 bytes
       setStatus('Finalizing registration…');
 
       const nameBytes = Array.from(nameToBytes(name.trim())); 
-      const ownerHex32 = u8aToHex(ownerBytes32);             
 
-      const registerTx = svc.register(
-        nameBytes,                       
-        ownerHex32,                      
-        DEFAULT_DURATION_MS,             
-        asFixedBytes(secret, 32),        
-        asFixedBytes(salt, 32),          
+      const registerTx = (svc as any).register(
+        nameBytes,           
+        ownerHex32,         
+        DEFAULT_DURATION_MS, 
+        secretHex,           
+        saltHex,            
         null
       );
 
@@ -154,15 +155,7 @@ export function ClaimVaraNameCard() {
               {sending ? (
                 <>
                   <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" aria-hidden>
-                    <circle
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      strokeWidth="4"
-                      fill="none"
-                      className="opacity-30"
-                    />
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" className="opacity-30" />
                     <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" fill="none" />
                   </svg>
                   Claiming…
