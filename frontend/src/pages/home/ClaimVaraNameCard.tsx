@@ -12,15 +12,23 @@ const MIN_COMMIT_AGE_MS = 60_000;
 const DEFAULT_DURATION_MS = 365n * 24n * 60n * 60n * 1000n;
 
 const te = new TextEncoder();
-const u8aToHex = (u8: Uint8Array) =>
-  '0x' +
-  Array.from(u8)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 const nameToBytes = (name: string) => te.encode(name);
 
+const u8aToHex = (u8: Uint8Array) =>
+  '0x' + Array.from(u8).map((b) => b.toString(16).padStart(2, '0')).join('');
+
+const asFixedBytes = (u8: Uint8Array, len?: number): [number, number[]] => [
+  len ?? u8.length,
+  Array.from(u8),
+];
+
 /** commitment = blake2b-256(name || owner || secret || salt) */
-function makeCommitment(name: string, ownerBytes32: Uint8Array, secret32: Uint8Array, salt32: Uint8Array): Uint8Array {
+function makeCommitment(
+  name: string,
+  ownerBytes32: Uint8Array,
+  secret32: Uint8Array,
+  salt32: Uint8Array
+): Uint8Array {
   const n = nameToBytes(name);
   const preimage = new Uint8Array(n.length + 32 + 32 + 32);
   let off = 0;
@@ -50,7 +58,7 @@ export function ClaimVaraNameCard() {
   const ownerBytes32 = useMemo(() => {
     if (!account?.address) return null;
     try {
-      return decodeAddress(account.address);
+      return decodeAddress(account.address); 
     } catch {
       return null;
     }
@@ -77,8 +85,8 @@ export function ClaimVaraNameCard() {
       const svc = new Service(new Program(api, PROGRAM_ID));
       const injector = await web3FromSource(account.meta.source);
 
-      // 1) commit
-      const commitTx: TransactionBuilder<unknown> = svc.commit(commitment);
+      // 1) commit: bytes32 -> [32, number[]]
+      const commitTx: TransactionBuilder<unknown> = svc.commit(asFixedBytes(commitment, 32));
       commitTx.withAccount(account.decodedAddress, { signer: injector.signer });
       await commitTx.calculateGas();
       const { blockHash: commitBlock, response: commitResp } = await commitTx.signAndSend();
@@ -89,11 +97,21 @@ export function ClaimVaraNameCard() {
       setStatus(`Waiting ${Math.ceil(MIN_COMMIT_AGE_MS / 1000)}s before register…`);
       await new Promise((res) => setTimeout(res, MIN_COMMIT_AGE_MS));
 
-      // 3) register 
+      // 3) register
       setStatus('Finalizing registration…');
-      const ownerHex32 = u8aToHex(ownerBytes32);
-      const nameBytes = Array.from(nameToBytes(name.trim()));
-      const registerTx = svc.register(nameBytes, ownerHex32, DEFAULT_DURATION_MS, secret, salt, null);
+
+      const nameBytes = Array.from(nameToBytes(name.trim())); 
+      const ownerHex32 = u8aToHex(ownerBytes32);             
+
+      const registerTx = svc.register(
+        nameBytes,                       
+        ownerHex32,                      
+        DEFAULT_DURATION_MS,             
+        asFixedBytes(secret, 32),        
+        asFixedBytes(salt, 32),          
+        null
+      );
+
       registerTx.withAccount(account.decodedAddress, { signer: injector.signer });
       await registerTx.calculateGas();
       const { blockHash: regBlock, response: regResp } = await registerTx.signAndSend();
@@ -156,10 +174,14 @@ export function ClaimVaraNameCard() {
           </div>
 
           {status && (
-            <div className="mt-4 rounded-lg border border-white/15 bg-white/10 p-3 text-white/90 text-sm">{status}</div>
+            <div className="mt-4 rounded-lg border border-white/15 bg-white/10 p-3 text-white/90 text-sm">
+              {status}
+            </div>
           )}
         </div>
       </section>
     </div>
   );
 }
+
+export default ClaimVaraNameCard;

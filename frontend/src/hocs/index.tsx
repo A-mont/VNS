@@ -5,11 +5,7 @@ import {
   ProviderProps,
   useProgram,
 } from '@gear-js/react-hooks';
-import {
-  SignlessTransactionsProvider as SharedSignlessTransactionsProvider,
-  GaslessTransactionsProvider as SharedGaslessTransactionsProvider,
-  EzTransactionsProvider,
-} from 'gear-ez-transactions';
+
 import { Alert, alertStyles } from '@gear-js/vara-ui';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ComponentType } from 'react';
@@ -43,29 +39,7 @@ const queryClient = new QueryClient({
   },
 });
 
-function GaslessTransactionsProvider({ children }: ProviderProps) {
-  return (
-    <SharedGaslessTransactionsProvider
-      programId={import.meta.env.VITE_PROGRAMID}
-      backendAddress={import.meta.env.VITE_BACKEND}
-      voucherLimit={18}>
-      {children}
-    </SharedGaslessTransactionsProvider>
-  );
-}
 
-function SignlessTransactionsProvider({ children }: ProviderProps) {
-  const { data: program } = useProgram({ library: Program, id: import.meta.env.VITE_PROGRAMID });
-
-  if (!program) return null;
-
-  return (
-    <SharedSignlessTransactionsProvider programId={import.meta.env.VITE_PROGRAMID} program={program}
->
-      {children}
-    </SharedSignlessTransactionsProvider>
-  );
-}
 
 
 function QueryProvider({ children }: ProviderProps) {

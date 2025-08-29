@@ -1,8 +1,5 @@
 import { useAlert } from '@gear-js/react-hooks';
-import {
-  GenericTransactionReturn,
-  TransactionReturn,
-} from '@gear-js/react-hooks/dist/hooks/sails/types';
+import { GenericTransactionReturn, TransactionReturn } from '@gear-js/react-hooks/dist/hooks/sails/types';
 import { useEzTransactions } from 'gear-ez-transactions';
 import { useCheckBalance } from './use-check-balance';
 
@@ -33,7 +30,7 @@ export const useSignAndSend = () => {
 
   const { checkBalance } = useCheckBalance({
     signlessPairVoucherId: signless.voucher?.id,
-    gaslessVoucherId: gasless.voucherId,
+    gaslessVoucherId: gasless.voucherId?.startsWith('0x') ? (gasless.voucherId as `0x${string}`) : undefined,
   });
 
   const alert = useAlert();
@@ -48,7 +45,7 @@ export const useSignAndSend = () => {
     checkBalance(
       calculatedGas,
       () => {
-        // No async here to satisfy ESLint's @typescript-eslint/no-misused-promises
+        
         void transaction
           .signAndSend()
           .then(({ response }) =>
